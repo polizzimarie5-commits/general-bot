@@ -1,11 +1,13 @@
+
+require('dotenv').config();
 const TelegramBot = require('node-telegram-bot-api');
 const axios = require('axios');
 
-const BOT_TOKEN = 'YOUR_TELEGRAM_BOT_TOKEN';
+const BOT_TOKEN = process.env.BOT_TOKEN;
 const bot = new TelegramBot(BOT_TOKEN, { polling: true });
 
-// Optional: your Telegram ID to receive reports
-const ownerId = 'YOUR_TELEGRAM_USER_ID';
+const ownerId = process.env.OWNER_ID;
+
 
 // Store per-user states
 const chatStates = {};
