@@ -9,7 +9,7 @@ const OWNER_ID = process.env.OWNER_ID;
 const WEBHOOK_URL = `${process.env.RENDER_URL}/webhook/${BOT_TOKEN}`;
 const PORT = process.env.PORT || 3000;
 
-const bot = new TelegramBot(BOT_TOKEN, { webHook: { port: PORT } });
+const bot = new TelegramBot(BOT_TOKEN);
 bot.setWebHook(WEBHOOK_URL);
 
 const app = express();
