@@ -9,6 +9,10 @@ const OWNER_ID = process.env.OWNER_ID;
 const WEBHOOK_URL = `${process.env.RENDER_URL}/webhook/${BOT_TOKEN}`;
 const PORT = process.env.PORT || 3000;
 
+console.log('🚀 Webhook route registered:', `/webhook/${BOT_TOKEN}`);
+console.log('Render URL:', process.env.RENDER_URL);
+
+
 const bot = new TelegramBot(BOT_TOKEN);
 bot.setWebHook(WEBHOOK_URL);
 
